@@ -1,9 +1,39 @@
 version: 2.1
-
-orbs:
-  maven: circleci/maven@0.0.12
-
-workflows:
-  maven_test:
-    jobs:
-      - maven/test # checkout, build, test, and upload test results
+workflows: # Define a Workflow running the build job, then the deploy job
+   version: 2
+   build-deploy:
+     jobs:
+       - build
+       - deploy:
+           requires:
+             - build
+jobs:
+  build:
+    working_directory: ~/morningstar-qa-demo-service
+    docker:
+      - image: circleci/openjdk:8-jdk-stretch
+    steps:
+      - checkout
+      - restore_cache:
+          key: morningstar-qa-demo-service-{{ checksum "pom.xml" }}
+      - run: mvn dependency:go-offline      
+      - save_cache:
+          paths:
+            - ~/.m2
+          key: morningstar-qa-demo-service-{{ checksum "pom.xml" }}     
+      - run: mvn clean package
+      - store_test_results:
+          path: target/surefire-reports  
+      - store_artifacts:
+          path: target/autoManagementDemo-0.0.1-SNAPSHOT.jar
+       
+  deploy:
+     docker: # Specify executor for running deploy job
+       - image: circleci/python:3.6.4 # Specify docker image to use
+     steps:
+       - run: # Install the AWS CLI if it is not already included in the docker image
+           name: Install awscli 
+           command: sudo pip install awscli
+       - run: # Deploy to S3 using the sync command
+           name: Deploy to S3
+           command: aws s3 cp target/autoManagementDemo-0.0.1-SNAPSHOT.jar s3://morningstar-sheng
